@@ -14,9 +14,17 @@ A minimal macOS markdown editor with a side-by-side preview pane and a Finder Qu
 
 ## Install
 
-### Notarised release (recommended for colleagues)
+### Homebrew (recommended)
 
-Download the latest `mded-<version>.zip` from the [Releases](https://github.com/ersatzben/mded/releases) page, unzip, drag `mded.app` into `/Applications`. Double-click to launch — Apple-notarised, no Gatekeeper prompts.
+```bash
+brew install --cask ersatzben/mded/mded
+```
+
+Brew auto-taps `ersatzben/mded` on first invocation. Update with `brew upgrade --cask mded`. Apple-notarised, no Gatekeeper prompts.
+
+### Pre-built zip
+
+If you'd rather avoid Homebrew, grab the latest `mded-<version>.zip` from the [Releases](https://github.com/ersatzben/mded/releases) page, unzip, and drag `mded.app` into `/Applications`. Same notarised binary, just delivered manually.
 
 ### From source
 
@@ -64,7 +72,9 @@ Then for each release:
 ./release.sh 1.0.1
 ```
 
-`release.sh` builds Release with Developer ID + Hardened Runtime, submits to Apple's notary service, staples the ticket, and emits `dist/mded-<version>.zip` ready to attach to a GitHub Release.
+`release.sh` builds Release with Developer ID + Hardened Runtime, submits to Apple's notary service, staples the ticket, emits `dist/mded-1.0.1.zip`, commits the version bump, creates the GitHub release with the zip attached, and bumps the [homebrew-mded](https://github.com/ersatzben/homebrew-mded) cask so `brew upgrade --cask mded` picks it up.
+
+Env-var escape hatches: `MDED_NO_PUBLISH=1` (build + notarise only, no git/release/tap steps), `MDED_NO_TAP_BUMP=1` (release but don't touch the tap), `MDED_TAP_DIR=path` (override the tap repo location, default `~/dev/homebrew-mded`).
 
 ## Acknowledgements
 

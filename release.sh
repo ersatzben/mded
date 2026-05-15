@@ -20,11 +20,15 @@ VERSION="${1:?usage: ./release.sh <version>}"
 APP_NAME="mded"
 TEAM_ID="2F6498S9C9"
 NOTARY_PROFILE="${MDED_NOTARY_PROFILE:-mded-notary}"
+# Where the homebrew-mded tap lives locally. Used to auto-bump the cask after
+# a successful release. Set MDED_TAP_DIR= to override, or MDED_NO_TAP_BUMP=1 to skip.
+TAP_DIR="${MDED_TAP_DIR:-${HOME}/dev/homebrew-mded}"
 
 BUILD_DIR="build"
 DIST_DIR="dist"
 ZIP_NAME="${APP_NAME}-${VERSION}.zip"
 BUILT_APP="${BUILD_DIR}/Build/Products/Release/${APP_NAME}.app"
+TAG="v${VERSION}"
 
 # Sanity checks before doing anything expensive.
 if ! security find-identity -v -p codesigning | grep -q "Developer ID Application"; then
@@ -105,6 +109,59 @@ ditto -c -k --keepParent "${BUILT_APP}" "${FINAL_ZIP}"
 echo "→ Gatekeeper assessment on the stapled app"
 spctl -a -vvv -t install "${BUILT_APP}" 2>&1 | sed 's/^/    /'
 
+# ----- post-build: commit version bump, tag, GitHub release, tap bump ---------
+
+if [[ "${MDED_NO_PUBLISH:-0}" == "1" ]]; then
+    echo
+    echo "✓ ${FINAL_ZIP} (MDED_NO_PUBLISH set — skipping git/release/tap steps)"
+    exit 0
+fi
+
+if ! command -v gh >/dev/null 2>&1; then
+    echo
+    echo "✓ ${FINAL_ZIP}"
+    echo "  (gh CLI not installed — skipping GitHub release + tap bump)"
+    exit 0
+fi
+
+SHA=$(shasum -a 256 "${FINAL_ZIP}" | awk '{print $1}')
+
+echo "→ committing version bump and tagging ${TAG}"
+git add mded/Info.plist QuickLookExtension/Info.plist
+if ! git diff --cached --quiet; then
+    git commit -m "Release ${VERSION}"
+else
+    echo "    (Info.plists already at ${VERSION} in git)"
+fi
+if git rev-parse "${TAG}" >/dev/null 2>&1; then
+    echo "    (tag ${TAG} already exists)"
+else
+    git tag -a "${TAG}" -m "mded ${VERSION}"
+fi
+git push origin HEAD
+git push origin "${TAG}" || true
+
+echo "→ creating GitHub release ${TAG}"
+if gh release view "${TAG}" --repo ersatzben/mded >/dev/null 2>&1; then
+    echo "    (release ${TAG} already exists — uploading asset only)"
+    gh release upload "${TAG}" "${FINAL_ZIP}" --repo ersatzben/mded --clobber
+else
+    gh release create "${TAG}" "${FINAL_ZIP}" \
+        --repo ersatzben/mded \
+        --title "mded ${VERSION}" \
+        --generate-notes
+fi
+
+if [[ "${MDED_NO_TAP_BUMP:-0}" == "1" ]]; then
+    echo "  (MDED_NO_TAP_BUMP set — skipping homebrew-mded bump)"
+elif [[ -x "${TAP_DIR}/bump-tap.sh" ]]; then
+    echo "→ bumping homebrew-mded cask to ${VERSION}"
+    "${TAP_DIR}/bump-tap.sh" "${VERSION}" "${SHA}"
+else
+    echo "  (no bump-tap.sh at ${TAP_DIR} — skipping tap bump; set MDED_TAP_DIR if it lives elsewhere)"
+fi
+
 echo
-echo "✓ ${FINAL_ZIP}"
-echo "  upload to a GitHub Release; colleagues unzip and double-click — no warnings."
+echo "✓ shipped mded ${VERSION}"
+echo "  release: https://github.com/ersatzben/mded/releases/tag/${TAG}"
+echo "  install: brew install --cask ersatzben/mded/mded"
