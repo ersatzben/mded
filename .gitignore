@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# Build & release artifacts
+build/
+dist/
+
+# Xcode user state (keep the generated project, drop per-user breakpoints/schemes)
+**/xcuserdata/
+*.xcuserstate
+*.xcuserstatecache
+
+# Local Claude Code settings
+.claude/
+
+# Python bytecode (icon helper)
+__pycache__/
+*.pyc

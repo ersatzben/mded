@@ -1,0 +1,84 @@
+name: mded
+options:
+  bundleIdPrefix: com.mded
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+  configs:
+    # Release builds sign with the Developer ID Application cert and enable
+    # Hardened Runtime so the .app can be notarized via xcrun notarytool.
+    Release:
+      DEVELOPMENT_TEAM: "2F6498S9C9"
+      CODE_SIGN_STYLE: Manual
+      CODE_SIGN_IDENTITY: "Developer ID Application"
+      ENABLE_HARDENED_RUNTIME: YES
+      OTHER_CODE_SIGN_FLAGS: "--timestamp"
+      # Stop Xcode auto-injecting com.apple.security.get-task-allow (the debugger
+      # attach entitlement). Apple rejects notarization if that entitlement is
+      # present on a Hardened Runtime binary.
+      CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+
+targets:
+  mded:
+    type: application
+    platform: macOS
+    sources:
+      - path: mded
+        excludes:
+          - "*.entitlements"
+          - "Info.plist"
+          - "Resources/**"
+      - path: mded/Resources
+        buildPhase: resources
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mded.app
+        PRODUCT_NAME: mded
+        CODE_SIGN_ENTITLEMENTS: mded/mded.entitlements
+        INFOPLIST_FILE: mded/Info.plist
+        GENERATE_INFOPLIST_FILE: false
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: "-"
+          CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - target: QuickLookExtension
+        embed: true
+
+  QuickLookExtension:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: QuickLookExtension
+        excludes:
+          - "Info.plist"
+          - "*.entitlements"
+      - path: Shared
+      - path: mded/Resources/github-markdown.css
+        buildPhase: resources
+      - path: mded/Resources/github-highlight.css
+        buildPhase: resources
+      - path: mded/Resources/github-highlight-dark.css
+        buildPhase: resources
+      - path: mded/Resources/marked.min.js
+        buildPhase: resources
+      - path: mded/Resources/highlight.min.js
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mded.app.quicklook
+        PRODUCT_NAME: QuickLookExtension
+        INFOPLIST_FILE: QuickLookExtension/Info.plist
+        GENERATE_INFOPLIST_FILE: false
+        SKIP_INSTALL: true
+        CODE_SIGN_ENTITLEMENTS: QuickLookExtension/QuickLookExtension.entitlements
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: "-"
+          CODE_SIGN_STYLE: Automatic
