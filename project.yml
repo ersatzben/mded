@@ -50,6 +50,9 @@ targets:
     dependencies:
       - target: QuickLookExtension
         embed: true
+    scheme:
+      testTargets:
+        - mdedTests
 
   QuickLookExtension:
     type: app-extension
@@ -70,6 +73,8 @@ targets:
         buildPhase: resources
       - path: mded/Resources/highlight.min.js
         buildPhase: resources
+      - path: mded/Resources/renderer.js
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mded.app.quicklook
@@ -78,6 +83,35 @@ targets:
         GENERATE_INFOPLIST_FILE: false
         SKIP_INSTALL: true
         CODE_SIGN_ENTITLEMENTS: QuickLookExtension/QuickLookExtension.entitlements
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: "-"
+          CODE_SIGN_STYLE: Automatic
+
+  # Unit tests for the shared renderer and text codec. Not hosted in the app, so
+  # running them doesn't launch (or register) mded.app.
+  mdedTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+      - path: Shared
+      - path: mded/Resources/github-markdown.css
+        buildPhase: resources
+      - path: mded/Resources/github-highlight.css
+        buildPhase: resources
+      - path: mded/Resources/github-highlight-dark.css
+        buildPhase: resources
+      - path: mded/Resources/marked.min.js
+        buildPhase: resources
+      - path: mded/Resources/highlight.min.js
+        buildPhase: resources
+      - path: mded/Resources/renderer.js
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mded.app.tests
+        GENERATE_INFOPLIST_FILE: true
       configs:
         Debug:
           CODE_SIGN_IDENTITY: "-"

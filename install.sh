@@ -10,6 +10,15 @@ BUILD_DIR="build"
 DEST="/Applications/${APP_NAME}.app"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
+# A Homebrew-managed copy would be silently replaced by this build, leaving brew
+# tracking an app it didn't install. Ask for an explicit override instead.
+if command -v brew >/dev/null 2>&1 && brew list --cask "${APP_NAME}" >/dev/null 2>&1 \
+        && [[ "${MDED_FORCE_INSTALL:-0}" != "1" ]]; then
+    echo "✘ ${DEST} is managed by Homebrew (brew install --cask ${APP_NAME})." >&2
+    echo "  Run 'brew uninstall --cask ${APP_NAME}' first, or MDED_FORCE_INSTALL=1 ./install.sh to replace it anyway." >&2
+    exit 1
+fi
+
 if command -v xcodegen >/dev/null 2>&1; then
     echo "→ regenerating xcode project"
     xcodegen generate --quiet
@@ -54,9 +63,22 @@ qlmanage -r cache >/dev/null 2>&1 || true
 # `qlmanage -r cache` clears file caches but doesn't restart the XPC services.
 pkill -f QuickLookUIService 2>/dev/null || true
 pkill -f QuickLookSatellite 2>/dev/null || true
-killall Finder >/dev/null 2>&1 || true
+
+# Finder caches Quick Look extensions; relaunching it picks up the new one, but
+# also closes its windows, so ask first. Non-interactive runs skip it.
+RELAUNCHED_FINDER=0
+if [[ -t 0 ]]; then
+    read -r -p "→ relaunch Finder so Quick Look uses the new extension? [y/N] " answer
+    if [[ "${answer}" =~ ^[Yy] ]]; then
+        killall Finder >/dev/null 2>&1 || true
+        RELAUNCHED_FINDER=1
+    fi
+fi
 
 echo
 echo "✓ installed ${DEST}"
 echo "  first launch: right-click → Open (Gatekeeper prompts once for ad-hoc signing)"
 echo "  Quick Look: select a .md in Finder and press space"
+if [[ "${RELAUNCHED_FINDER}" == "0" ]]; then
+    echo "  (if Finder still shows the old preview: killall Finder)"
+fi

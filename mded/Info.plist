@@ -7,23 +7,16 @@
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
-			<key>CFBundleTypeExtensions</key>
-			<array>
-				<string>md</string>
-				<string>markdown</string>
-				<string>mdown</string>
-				<string>mkd</string>
-				<string>mkdn</string>
-			</array>
 			<key>CFBundleTypeName</key>
 			<string>Markdown Document</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
-			<string>Owner</string>
+			<string>Default</string>
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>net.daringfireball.markdown</string>
+				<string>com.mded.markdown-variant</string>
 				<string>public.markdown</string>
 			</array>
 		</dict>
@@ -41,8 +34,61 @@
 	<key>CFBundleShortVersionString</key>
 	<string>1.1.0</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>1.1.0</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<!-- Less common Markdown extensions. The system's own declaration of
+		     net.daringfireball.markdown covers only md/markdown, and an app can't
+		     add extensions to a type the system declares, so these get their own
+		     type that conforms to it. -->
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.mded.markdown-variant</string>
+			<key>UTTypeDescription</key>
+			<string>Markdown Document</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>net.daringfireball.markdown</string>
+				<string>public.plain-text</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mdown</string>
+					<string>mkd</string>
+					<string>mkdn</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<!-- For macOS versions whose CoreTypes don't declare it. -->
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>net.daringfireball.markdown</string>
+			<key>UTTypeDescription</key>
+			<string>Markdown Document</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>md</string>
+					<string>markdown</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>text/markdown</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>

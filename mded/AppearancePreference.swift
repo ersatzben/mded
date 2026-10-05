@@ -18,16 +18,7 @@ enum AppearancePreference: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Drives `.preferredColorScheme(...)` for the SwiftUI window chrome.
-    var colorScheme: ColorScheme? {
-        switch self {
-        case .system: return nil
-        case .light, .evening: return .light
-        case .dark: return .dark
-        }
-    }
-
-    /// NSAppearance for the AppKit subtree (split view, scroll bars, find bar).
+    /// Applied app-wide via `NSApp.appearance`; nil follows the system setting.
     /// Evening rides on top of aqua so the chrome stays light.
     var nsAppearance: NSAppearance? {
         switch self {
@@ -38,6 +29,14 @@ enum AppearancePreference: String, CaseIterable, Identifiable {
     }
 
     var isEvening: Bool { self == .evening }
+
+    /// Sets the appearance app-wide, so windows, menus, sheets and the find bar
+    /// all follow; nil reliably returns to the system setting.
+    @MainActor
+    func applyToApp() {
+        guard NSApp.appearance?.name != nsAppearance?.name else { return }
+        NSApp.appearance = nsAppearance
+    }
 }
 
 // Evening palette — used by both the editor NSTextView and the WebView preview.
@@ -47,7 +46,7 @@ enum EveningPalette {
 }
 
 struct AppearanceCommands: Commands {
-    @AppStorage("appearance") private var appearanceRaw: String = AppearancePreference.system.rawValue
+    @AppStorage(DefaultsKey.appearance) private var appearanceRaw: String = AppearancePreference.system.rawValue
 
     var body: some Commands {
         CommandMenu("Appearance") {

@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build (Debug, ad-hoc signed)
+        run: >
+          xcodebuild -project mded.xcodeproj -scheme mded -configuration Debug
+          -derivedDataPath build CODE_SIGN_IDENTITY=- build
+
+      - name: Unit tests
+        run: >
+          xcodebuild -project mded.xcodeproj -scheme mded -configuration Debug
+          -derivedDataPath build CODE_SIGN_IDENTITY=- test

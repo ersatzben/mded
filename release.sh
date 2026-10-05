@@ -12,6 +12,10 @@
 #
 # Output:
 #   dist/mded-<version>.zip   notarized, stapled, ready to upload to a GitHub Release
+#
+# Publishing (the default) requires a clean working tree on main, so the tag
+# always matches what was built. MDED_NO_PUBLISH=1 builds and notarises only,
+# and allows a dirty tree for local testing.
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -30,7 +34,41 @@ ZIP_NAME="${APP_NAME}-${VERSION}.zip"
 BUILT_APP="${BUILD_DIR}/Build/Products/Release/${APP_NAME}.app"
 TAG="v${VERSION}"
 
+PUBLISH=1
+[[ "${MDED_NO_PUBLISH:-0}" == "1" ]] && PUBLISH=0
+
 # Sanity checks before doing anything expensive.
+if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "✘ version must look like 1.2.3 (got '${VERSION}')" >&2
+    exit 1
+fi
+if [[ -n "$(git status --porcelain)" ]]; then
+    if [[ "${PUBLISH}" == "1" ]]; then
+        echo "✘ working tree has uncommitted or untracked changes; the release tag would not" >&2
+        echo "  match the shipped binary. Commit or stash first (or set MDED_NO_PUBLISH=1)." >&2
+        git status --short >&2
+        exit 1
+    fi
+    echo "⚠ working tree is dirty (MDED_NO_PUBLISH set, so continuing)"
+fi
+if [[ "${PUBLISH}" == "1" ]]; then
+    BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    if [[ "${BRANCH}" != "main" ]]; then
+        echo "✘ releases are cut from main (on '${BRANCH}')" >&2
+        exit 1
+    fi
+    # Re-running after a failure partway through publishing is fine, as long as
+    # the tag is still on this commit. A tag elsewhere means the version is taken.
+    if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+        if [[ "$(git rev-parse "${TAG}^{commit}")" != "$(git rev-parse HEAD)" ]]; then
+            echo "✘ tag ${TAG} already exists on a different commit" >&2
+            exit 1
+        fi
+    elif git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+        echo "✘ tag ${TAG} already exists on origin" >&2
+        exit 1
+    fi
+fi
 if ! security find-identity -v -p codesigning | grep -q "Developer ID Application"; then
     echo "✘ No 'Developer ID Application' identity in keychain. Install your cert first." >&2
     exit 1
@@ -47,9 +85,29 @@ if command -v xcodegen >/dev/null 2>&1; then
     xcodegen generate --quiet
 fi
 
+PLISTS=(mded/Info.plist QuickLookExtension/Info.plist)
+# Until the version bump is committed, any exit (failure, or a build-only run)
+# puts the plists back exactly as they were, local edits included.
+PLIST_BACKUP=$(mktemp -d)
+cp mded/Info.plist "${PLIST_BACKUP}/mded.plist"
+cp QuickLookExtension/Info.plist "${PLIST_BACKUP}/quicklook.plist"
+PLISTS_COMMITTED=0
+restore_plists() {
+    if [[ "${PLISTS_COMMITTED}" == "0" ]]; then
+        cp "${PLIST_BACKUP}/mded.plist" mded/Info.plist
+        cp "${PLIST_BACKUP}/quicklook.plist" QuickLookExtension/Info.plist
+    fi
+}
+trap restore_plists EXIT
+
 echo "→ stamping version ${VERSION} into Info.plists"
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" mded/Info.plist
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" QuickLookExtension/Info.plist
+# CFBundleVersion is what Launch Services and pluginkit compare to choose
+# between copies of the app and its Quick Look extension, so it must increase
+# with every release; using the version string keeps it monotonic.
+for plist in "${PLISTS[@]}"; do
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" "${plist}"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${VERSION}" "${plist}"
+done
 
 echo "→ building Release with Developer ID signing + Hardened Runtime"
 rm -rf "${BUILD_DIR}"
@@ -82,10 +140,11 @@ ditto -c -k --keepParent "${BUILT_APP}" "${SUBMIT_ZIP}"
 
 echo "→ submitting to Apple notary service (this takes 1–5 minutes)"
 # notarytool exits 0 even when status=Invalid, so capture output and check status
-# ourselves before continuing to staple.
+# ourselves before continuing to staple. Echo to stderr (not /dev/tty) so the
+# script also works without a terminal, e.g. in CI.
 SUBMIT_OUTPUT=$(xcrun notarytool submit "${SUBMIT_ZIP}" \
     --keychain-profile "${NOTARY_PROFILE}" \
-    --wait 2>&1 | tee /dev/tty)
+    --wait 2>&1 | tee /dev/stderr)
 SUBMISSION_ID=$(echo "${SUBMIT_OUTPUT}" | awk '/^[[:space:]]*id:/ {print $2; exit}')
 STATUS=$(echo "${SUBMIT_OUTPUT}" | awk '/^[[:space:]]*status:/ {s=$2} END {print s}')
 
@@ -111,35 +170,38 @@ spctl -a -vvv -t install "${BUILT_APP}" 2>&1 | sed 's/^/    /'
 
 # ----- post-build: commit version bump, tag, GitHub release, tap bump ---------
 
-if [[ "${MDED_NO_PUBLISH:-0}" == "1" ]]; then
+if [[ "${PUBLISH}" == "0" ]]; then
     echo
-    echo "✓ ${FINAL_ZIP} (MDED_NO_PUBLISH set — skipping git/release/tap steps)"
+    echo "✓ ${FINAL_ZIP} (MDED_NO_PUBLISH set — skipping git/release/tap steps;"
+    echo "  Info.plists restored)"
     exit 0
 fi
 
 if ! command -v gh >/dev/null 2>&1; then
     echo
     echo "✓ ${FINAL_ZIP}"
-    echo "  (gh CLI not installed — skipping GitHub release + tap bump)"
+    echo "  (gh CLI not installed — skipping GitHub release + tap bump;"
+    echo "  Info.plists restored)"
     exit 0
 fi
 
 SHA=$(shasum -a 256 "${FINAL_ZIP}" | awk '{print $1}')
 
 echo "→ committing version bump and tagging ${TAG}"
-git add mded/Info.plist QuickLookExtension/Info.plist
+git add "${PLISTS[@]}"
 if ! git diff --cached --quiet; then
     git commit -m "Release ${VERSION}"
 else
     echo "    (Info.plists already at ${VERSION} in git)"
 fi
-if git rev-parse "${TAG}" >/dev/null 2>&1; then
-    echo "    (tag ${TAG} already exists)"
+PLISTS_COMMITTED=1
+if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+    echo "    (tag ${TAG} already exists on this commit)"
 else
     git tag -a "${TAG}" -m "mded ${VERSION}"
 fi
 git push origin HEAD
-git push origin "${TAG}" || true
+git push origin "${TAG}"
 
 echo "→ creating GitHub release ${TAG}"
 if gh release view "${TAG}" --repo ersatzben/mded >/dev/null 2>&1; then
